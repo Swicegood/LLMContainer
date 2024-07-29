@@ -21,8 +21,7 @@ COPY CMakeLists.txt llava-server.cpp /app/llama.cpp/examples/llava/
 
 # Build the project
 RUN cd llama.cpp/examples/llava && \
-    mkdir build && cd build && \
-    cmake .. && \
+    cmake . && \
     make
 
 # Expose the port the server will run on
