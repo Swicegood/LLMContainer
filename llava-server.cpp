@@ -19,15 +19,15 @@
 #include <opencv2/opencv.hpp>
 #include <curl/curl.h>
 
-// Add this define before including RapidJSON to work around the compile error
-#define RAPIDJSON_HAS_STDSTRING 1
-#include <rapidjson/document.h>
-#include <rapidjson/writer.h>
-#include <rapidjson/stringbuffer.h>
+// Include nlohmann/json
+#include <nlohmann/json.hpp>
 
 #include "clip.h"
 #include "llama.h"
 #include "llava.h"
+
+// Use nlohmann::json
+using json = nlohmann::json;
 
 // Global variables
 struct clip_ctx* clip_ctx;
@@ -37,6 +37,7 @@ llama_context* llama_ctx;
 // Forward declarations
 std::string process_request(const std::string& request_body);
 std::string generate_image_description(const std::string& image_data, const std::string& system_message, const std::string& user_message);
+std::string base64_decode(const std::string& encoded_string);
 
 // Main function
 int main(int argc, char* argv[]) {
@@ -137,14 +138,14 @@ int main(int argc, char* argv[]) {
 }
 
 std::string process_request(const std::string& request_body) {
-    rapidjson::Document d;
-    d.Parse(request_body.c_str());
-
-    if (d.HasParseError() || !d.IsObject()) {
+    json request;
+    try {
+        request = json::parse(request_body);
+    } catch (json::parse_error& e) {
         return "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\": \"Invalid JSON\"}";
     }
 
-    if (!d.HasMember("messages") || !d["messages"].IsArray()) {
+    if (!request.contains("messages") || !request["messages"].is_array()) {
         return "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\": \"Missing or invalid 'messages' field\"}";
     }
 
@@ -152,22 +153,22 @@ std::string process_request(const std::string& request_body) {
     std::string user_message;
     std::string image_data;
 
-    for (const auto& message : d["messages"].GetArray()) {
-        if (!message.IsObject() || !message.HasMember("role") || !message.HasMember("content")) {
+    for (const auto& message : request["messages"]) {
+        if (!message.is_object() || !message.contains("role") || !message.contains("content")) {
             continue;
         }
 
-        std::string role = message["role"].GetString();
+        std::string role = message["role"];
         
-        if (role == "system" && message["content"].IsString()) {
-            system_message = message["content"].GetString();
+        if (role == "system" && message["content"].is_string()) {
+            system_message = message["content"];
         } else if (role == "user") {
-            if (message["content"].IsArray()) {
-                for (const auto& content : message["content"].GetArray()) {
-                    if (content.HasMember("type") && content["type"].GetString() == std::string("text")) {
-                        user_message = content["text"].GetString();
-                    } else if (content.HasMember("type") && content["type"].GetString() == std::string("image_url")) {
-                        std::string image_url = content["image_url"]["url"].GetString();
+            if (message["content"].is_array()) {
+                for (const auto& content : message["content"]) {
+                    if (content.contains("type") && content["type"] == "text") {
+                        user_message = content["text"];
+                    } else if (content.contains("type") && content["type"] == "image_url") {
+                        std::string image_url = content["image_url"]["url"];
                         if (image_url.substr(0, 22) == "data:image/png;base64,") {
                             image_data = image_url.substr(22);
                         }
@@ -183,27 +184,67 @@ std::string process_request(const std::string& request_body) {
 
     std::string description = generate_image_description(image_data, system_message, user_message);
 
-    rapidjson::StringBuffer buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-    writer.StartObject();
-    writer.Key("choices");
-    writer.StartArray();
-    writer.StartObject();
-    writer.Key("message");
-    writer.StartObject();
-    writer.Key("role");
-    writer.String("assistant");
-    writer.Key("content");
-    writer.String(description.c_str());
-    writer.EndObject();
-    writer.EndObject();
-    writer.EndArray();
-    writer.EndObject();
+    json response = {
+        {"choices", {
+            {
+                {"message", {
+                    {"role", "assistant"},
+                    {"content", description}
+                }}
+            }
+        }}
+    };
 
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
-    response += buffer.GetString();
+    std::string response_body = response.dump();
+    std::string http_response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response_body;
 
-    return response;
+    return http_response;
+}
+
+std::string base64_decode(const std::string& encoded_string) {
+    std::string decoded_string;
+    int in_len = encoded_string.size();
+    int i = 0;
+    int j = 0;
+    int in_ = 0;
+    unsigned char char_array_4[4], char_array_3[3];
+
+    static const std::string base64_chars = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
+
+    while (in_len-- && (encoded_string[in_] != '=') && (isalnum(encoded_string[in_]) || (encoded_string[in_] == '+') || (encoded_string[in_] == '/'))) {
+        char_array_4[i++] = encoded_string[in_]; in_++;
+        if (i == 4) {
+            for (i = 0; i < 4; i++)
+                char_array_4[i] = base64_chars.find(char_array_4[i]);
+
+            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+            for (i = 0; (i < 3); i++)
+                decoded_string += char_array_3[i];
+            i = 0;
+        }
+    }
+
+    if (i) {
+        for (j = i; j < 4; j++)
+            char_array_4[j] = 0;
+
+        for (j = 0; j < 4; j++)
+            char_array_4[j] = base64_chars.find(char_array_4[j]);
+
+        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+        char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+        for (j = 0; (j < i - 1); j++) decoded_string += char_array_3[j];
+    }
+
+    return decoded_string;
 }
 
 std::string generate_image_description(const std::string& image_data, const std::string& system_message, const std::string& user_message) {
@@ -273,49 +314,5 @@ std::string generate_image_description(const std::string& image_data, const std:
     return description;
 }
 
-std::string base64_decode(const std::string& encoded_string) {
-    std::string decoded_string;
-    int in_len = encoded_string.size();
-    int i = 0;
-    int j = 0;
-    int in_ = 0;
-    unsigned char char_array_4[4], char_array_3[3];
 
-    static const std::string base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789+/";
-
-    while (in_len-- && (encoded_string[in_] != '=') && (isalnum(encoded_string[in_]) || (encoded_string[in_] == '+') || (encoded_string[in_] == '/'))) {
-        char_array_4[i++] = encoded_string[in_]; in_++;
-        if (i == 4) {
-            for (i = 0; i < 4; i++)
-                char_array_4[i] = base64_chars.find(char_array_4[i]);
-
-            char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-            char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-            char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-            for (i = 0; (i < 3); i++)
-                decoded_string += char_array_3[i];
-            i = 0;
-        }
-    }
-
-    if (i) {
-        for (j = i; j < 4; j++)
-            char_array_4[j] = 0;
-
-        for (j = 0; j < 4; j++)
-            char_array_4[j] = base64_chars.find(char_array_4[j]);
-
-        char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
-        char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
-        char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
-
-        for (j = 0; (j < i - 1); j++) decoded_string += char_array_3[j];
-    }
-
-    return decoded_string;
-}
 
