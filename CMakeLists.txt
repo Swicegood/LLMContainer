@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Option to use CUDA (from original)
 option(LLAVA_CUDA "Enable CUDA support" OFF)
 
+target_include_directories(llama PUBLIC .)
+target_include_directories(llama PUBLIC ../..)
+target_include_directories(llama PUBLIC ../../common)
+
 # Add the llama library (from original)
 add_library(llama OBJECT
             llama.cpp
@@ -14,10 +18,6 @@ add_library(llama OBJECT
             )
 
 target_link_libraries(llama PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
-
-target_include_directories(llama PUBLIC .)
-target_include_directories(llama PUBLIC ../..)
-target_include_directories(llama PUBLIC ../../common)
 
 target_compile_features(llama PRIVATE cxx_std_11)
 
