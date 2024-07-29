@@ -22,7 +22,7 @@
 #include <nlohmann/json.hpp>
 
 // Define LLAMA_SHARED if you're using llama as a shared library
-// #define LLAMA_SHARED
+#define LLAMA_SHARED
 
 #ifdef LLAMA_SHARED
     #if defined(_WIN32) && !defined(__MINGW32__)
