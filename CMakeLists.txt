@@ -24,6 +24,9 @@ target_include_directories(llama PUBLIC
     ../..
     ../../common
     ../../include
+    ../../ggml/include
+    ../../ggml/src
+    
 )
 
 target_link_libraries(llama PRIVATE ${CMAKE_THREAD_LIBS_INIT})
