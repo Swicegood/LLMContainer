@@ -1,4 +1,4 @@
-/ NOTE: This is modified from clip.cpp only for LLaVA,
+// NOTE: This is modified from clip.cpp only for LLaVA,
 // so there might be still unnecessary artifacts hanging around
 // I'll gradually clean and extend it
 // Note: Even when using identical normalized image inputs (see normalize_image_u8_to_f32()) we have a significant difference in resulting embeddings compared to pytorch

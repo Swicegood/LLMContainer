@@ -21,6 +21,23 @@
 
 #include <nlohmann/json.hpp>
 
+// Define LLAMA_SHARED if you're using llama as a shared library
+// #define LLAMA_SHARED
+
+#ifdef LLAMA_SHARED
+    #if defined(_WIN32) && !defined(__MINGW32__)
+        #ifdef LLAMA_BUILD
+            #define CLIP_API __declspec(dllexport)
+        #else
+            #define CLIP_API __declspec(dllimport)
+        #endif
+    #else
+        #define CLIP_API __attribute__ ((visibility ("default")))
+    #endif
+#else
+    #define CLIP_API
+#endif
+
 #include "clip.h"
 #include "llama.h"
 #include "llava.h"
