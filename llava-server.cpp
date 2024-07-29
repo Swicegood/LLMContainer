@@ -19,14 +19,12 @@
 #include <opencv2/opencv.hpp>
 #include <curl/curl.h>
 
-// Include nlohmann/json
 #include <nlohmann/json.hpp>
 
 #include "clip.h"
 #include "llama.h"
 #include "llava.h"
 
-// Use nlohmann::json
 using json = nlohmann::json;
 
 // Global variables
@@ -276,7 +274,17 @@ std::string generate_image_description(const std::string& image_data, const std:
 
     // Prepare prompt
     std::string prompt = system_message + "\n\nUser: " + user_message + "\n\nAssistant: ";
-    std::vector<llama_token> tokens = llama_tokenize(llama_model, prompt.c_str(), prompt.length(), true);
+    
+    // Tokenize the prompt
+    std::vector<llama_token> tokens;
+    llama_token token_buffer[1024];  // Adjust size as needed
+    int n_tokens = llama_tokenize(llama_model, prompt.c_str(), prompt.length(), token_buffer, sizeof(token_buffer) / sizeof(token_buffer[0]), true, false);
+    if (n_tokens < 0) {
+        clip_image_u8_free(clip_image);
+        free(image_embed);
+        return "Error: Failed to tokenize prompt";
+    }
+    tokens.assign(token_buffer, token_buffer + n_tokens);
 
     // Generate description
     std::string description;
@@ -284,35 +292,42 @@ std::string generate_image_description(const std::string& image_data, const std:
     llava_eval_image_embed(llama_ctx, &(llava_image_embed){image_embed, n_img_pos}, 1, &n_past);
 
     for (const auto& token : tokens) {
-        if (llama_decode(llama_ctx, llama_batch_get_one(&token, 1, n_past, 0))) {
-            break;
+        llama_batch batch = llama_batch_get_one(token, n_past, 0, false);
+        if (llama_decode(llama_ctx, batch)) {
+            clip_image_u8_free(clip_image);
+            free(image_embed);
+            return "Error: Failed to decode tokens";
         }
-        n_past += 1;
+        n_past++;
     }
 
-    llama_token_data_array candidates = {nullptr, 0, false};
-
+    llama_token id = 0;
     for (int i = 0; i < 500; ++i) { // Generate up to 500 tokens
-        candidates.data = nullptr;
-        candidates.size = 0;
-        candidates.sorted = false;
+        llama_token_data_array candidates = llama_token_data_array{
+            .data = NULL,
+            .size = 0,
+            .sorted = false,
+        };
 
-        llama_token id = llama_sample_token(llama_ctx, &candidates);
-        if (id == llama_token_eos(llama_model)) break;
-
-        const char* token_str = llama_token_to_str(llama_model, id);
-        description += token_str;
-
-        if (llama_decode(llama_ctx, llama_batch_get_one(&id, 1, n_past, 0))) {
+        id = llama_sample_token(llama_ctx, &candidates);
+        
+        if (llama_token_eos(llama_model) == id) {
             break;
         }
-        n_past += 1;
+
+        std::string token_str = llama_token_to_piece(llama_ctx, id);
+        description += token_str;
+
+        llama_batch batch = llama_batch_get_one(id, n_past, 0, false);
+        if (llama_decode(llama_ctx, batch)) {
+            break;
+        }
+        n_past++;
     }
 
     clip_image_u8_free(clip_image);
     free(image_embed);
     return description;
 }
-
 
 
