@@ -1,0 +1,24 @@
+version: v1.0
+name: LLM Pipeline
+agent:
+  machine:
+    type: e1-standard-2
+    os_image: ubuntu2004
+blocks:
+  - name: "Build and Push"
+    task:
+      secrets:
+        - name: dockerhub
+      prologue:
+        commands:
+          - echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+      
+      jobs:
+        - name: "Build and Push Docker image"
+          commands:
+            - checkout
+            - docker build -t llm:$SEMAPHORE_WORKFLOW_ID .
+            - docker tag llm:$SEMAPHORE_WORKFLOW_ID $DOCKER_USERNAME/llm:$SEMAPHORE_WORKFLOW_ID
+            - docker tag llm:$SEMAPHORE_WORKFLOW_ID $DOCKER_USERNAME/llm:latest
+            - docker push $DOCKER_USERNAME/llm:$SEMAPHORE_WORKFLOW_ID
+            - docker push $DOCKER_USERNAME/llm:latest
