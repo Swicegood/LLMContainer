@@ -19,6 +19,9 @@ RUN git clone https://github.com/ggerganov/llama.cpp.git
 # Copy the source files
 COPY CMakeLists.txt llava-server.cpp /app/llama.cpp/examples/llava/
 
+RUN mkdir -p /app/llama.cpp/examples/llava/include
+
+COPY json.hpp /app/llama.cpp/examples/llava/include/
 # Build the project
 RUN cd llama.cpp/examples/llava && \
     cmake . && \

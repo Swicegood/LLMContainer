@@ -14,9 +14,9 @@ find_package(Threads REQUIRED)
 
 # Add nlohmann/json
 # If you're using the single header file approach:
-# include_directories(${PROJECT_SOURCE_DIR}/include)  # Assuming you've placed the json.hpp file in an 'include' directory
+include_directories(${PROJECT_SOURCE_DIR}/include)  # Assuming you've placed the json.hpp file in an 'include' directory
 # If you're using a package manager like vcpkg or Conan, you might need to use find_package instead:
-find_package(nlohmann_json REQUIRED)
+# find_package(nlohmann_json REQUIRED)
 
 # Add the llama library
 add_library(llama OBJECT
