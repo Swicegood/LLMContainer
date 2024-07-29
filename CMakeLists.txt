@@ -23,6 +23,7 @@ target_include_directories(llama PUBLIC
     .
     ../..
     ../../common
+    ../../include
 )
 
 target_link_libraries(llama PRIVATE ${CMAKE_THREAD_LIBS_INIT})
