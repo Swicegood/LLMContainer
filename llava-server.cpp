@@ -18,6 +18,9 @@
 
 #include <opencv2/opencv.hpp>
 #include <curl/curl.h>
+
+// Add this define before including RapidJSON to work around the compile error
+#define RAPIDJSON_HAS_STDSTRING 1
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
@@ -65,7 +68,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialize LLaMA
-    llama_backend_init(false);
+    llama_backend_init(); // Remove the 'false' argument
     llama_model_params model_params = llama_model_default_params();
     llama_model = llama_load_model_from_file(model_path.c_str(), model_params);
     if (!llama_model) {
