@@ -308,8 +308,9 @@ std::string generate_image_description(const std::string& image_data, const std:
     // Use the address of the named object
     llava_eval_image_embed(llama_ctx, &img_embed, 1, &n_past);
 
-    for (const auto& token : tokens) {
-        llama_batch batch = llama_batch_get_one(&token, 1, n_past, 0);
+    // Process tokens using indexing instead of range-based for loop
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        llama_batch batch = llama_batch_get_one(&tokens[i], 1, n_past, 0);
         if (llama_decode(llama_ctx, batch)) {
             clip_image_u8_free(clip_image);
             free(image_embed);
@@ -341,4 +342,3 @@ std::string generate_image_description(const std::string& image_data, const std:
     free(image_embed);
     return description;
 }
-
