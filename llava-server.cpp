@@ -297,11 +297,16 @@ std::string generate_image_description(const std::string& image_data, const std:
         return "Error: Failed to tokenize prompt";
     }
     tokens.resize(n_tokens);
-    
+
     // Generate description
     std::string description;
     int n_past = 0;
-    llava_eval_image_embed(llama_ctx, &(llava_image_embed){image_embed, n_img_pos}, 1, &n_past);
+
+    // Create a named llava_image_embed object
+    llava_image_embed img_embed = {image_embed, n_img_pos};
+
+    // Use the address of the named object
+    llava_eval_image_embed(llama_ctx, &img_embed, 1, &n_past);
 
     for (const auto& token : tokens) {
         llama_batch batch = llama_batch_get_one(&token, 1, n_past, 0);
