@@ -284,7 +284,7 @@ std::string generate_image_description(const std::string& image_data, const std:
     
     // Tokenize the prompt
     std::vector<llama_token> tokens(1024); // Pre-allocate space for tokens
-    int n_tokens = llama_tokenize(llama_ctx, 
+    int n_tokens = llama_tokenize(llama_model, 
                                 prompt.c_str(), 
                                 prompt.length(), 
                                 tokens.data(), 
@@ -324,12 +324,12 @@ std::string generate_image_description(const std::string& image_data, const std:
         llama_token_data_array candidates = { NULL, 0, false };
         id = llama_sample_token(llama_ctx, &candidates);
         
-        if (llama_token_eos(llama_ctx) == id) {
+        if (llama_token_eos(llama_model) == id) {
             break;
         }
 
         // Use the context directly instead of getting the model
-        std::string token_str = llama_token_to_piece(llama_ctx, id);
+        std::string token_str = llama_token_to_piece(llama_model, id);
         description += token_str;
 
         llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
