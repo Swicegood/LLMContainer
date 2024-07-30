@@ -320,6 +320,7 @@ std::string generate_image_description(const std::string& image_data, const std:
     }
 
     llama_token id = 0;
+    char token_buf[8]; // Buffer to store the token piece, adjust size if needed
     for (int i = 0; i < 500; ++i) { // Generate up to 500 tokens
         llama_token_data_array candidates = { NULL, 0, false };
         id = llama_sample_token(llama_ctx, &candidates);
