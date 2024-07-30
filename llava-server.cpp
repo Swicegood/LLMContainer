@@ -260,16 +260,16 @@ std::string generate_image_description(const std::string& image_data, const std:
     }
 
     // Create clip_image_u8
-    struct clip_image_u8 *clip_image = clip_image_u8_init();
+    struct clip_image_u8* clip_image = clip_image_u8_init();
     if (!clip_image) {
         return "Error: Failed to initialize clip_image_u8";
     }
 
     // Convert OpenCV Mat to clip_image_u8
-    clip_image->nx = image.cols;
-    clip_image->ny = image.rows;
-    clip_image->buf.resize(image.total() * 3);
-    std::memcpy(clip_image->buf.data(), image.data, clip_image->buf.size());
+    if (!clip_image_load_from_bytes(image.data, image.total() * image.elemSize(), clip_image)) {
+        clip_image_u8_free(clip_image);
+        return "Error: Failed to load image data into clip_image_u8";
+    }
 
     // Generate image embedding
     float* image_embed = nullptr;
@@ -283,15 +283,14 @@ std::string generate_image_description(const std::string& image_data, const std:
     std::string prompt = system_message + "\n\nUser: " + user_message + "\n\nAssistant: ";
     
     // Tokenize the prompt
-    std::vector<llama_token> tokens;
-    llama_token token_buffer[1024];  // Adjust size as needed
-    int n_tokens = llama_tokenize(llama_model, prompt.c_str(), prompt.length(), token_buffer, sizeof(token_buffer) / sizeof(token_buffer[0]), true);
+    std::vector<llama_token> tokens(1024); // Pre-allocate space for tokens
+    int n_tokens = llama_tokenize(llama_model, prompt.c_str(), prompt.length(), tokens.data(), tokens.size(), true);
     if (n_tokens < 0) {
         clip_image_u8_free(clip_image);
         free(image_embed);
         return "Error: Failed to tokenize prompt";
     }
-    tokens.assign(token_buffer, token_buffer + n_tokens);
+    tokens.resize(n_tokens);
 
     // Generate description
     std::string description;

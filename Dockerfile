@@ -17,7 +17,7 @@ WORKDIR /app
 RUN git clone https://github.com/ggerganov/llama.cpp.git
 
 # Copy the source files
-COPY CMakeLists.txt llava-server.cpp clip.h /app/llama.cpp/examples/llava/
+COPY CMakeLists.txt llava-server.cpp /app/llama.cpp/examples/llava/
 
 RUN mkdir -p /app/llama.cpp/examples/llava/include/nlohmann
 
