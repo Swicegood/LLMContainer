@@ -21,7 +21,7 @@
 
 #include <nlohmann/json.hpp>
  
-#undef CLIP_API
+#undef CLIP_H
 
 #include "clip.h"
 #include "llama.h"
