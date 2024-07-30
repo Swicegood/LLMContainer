@@ -328,9 +328,10 @@ std::string generate_image_description(const std::string& image_data, const std:
             break;
         }
 
-        // Use the context directly instead of getting the model
-        std::string token_str = llama_token_to_piece(llama_model, id);
-        description += token_str;
+        int token_length = llama_token_to_piece(llama_model, id, token_buf, sizeof(token_buf), 0, false);
+        if (token_length > 0) {
+            description.append(token_buf, token_length);
+        }
 
         llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
         if (llama_decode(llama_ctx, batch)) {
