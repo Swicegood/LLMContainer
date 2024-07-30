@@ -20,6 +20,8 @@
 #include <curl/curl.h>
 
 #include <nlohmann/json.hpp>
+ 
+#undef CLIP_API
 
 #include "clip.h"
 #include "llama.h"
