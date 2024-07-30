@@ -4,19 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef LLAMA_SHARED
-#    if defined(_WIN32) && !defined(__MINGW32__)
-#        ifdef LLAMA_BUILD
-#            define CLIP_API __declspec(dllexport)
-#        else
-#            define CLIP_API __declspec(dllimport)
-#        endif
-#    else
-#        define CLIP_API __attribute__ ((visibility ("default")))
-#    endif
-#else
-#    define CLIP_API
-#endif
+#define CLIP_API
 
 struct clip_ctx;
 
