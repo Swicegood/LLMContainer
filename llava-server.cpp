@@ -319,7 +319,7 @@ std::string generate_image_description(const std::string& image_data, const std:
         n_past++;
     }
 
-    llama_token id = 0;
+   llama_token id = 0;
     for (int i = 0; i < 500; ++i) { // Generate up to 500 tokens
         llama_token_data_array candidates = { NULL, 0, false };
         id = llama_sample_token(llama_ctx, &candidates);
@@ -328,7 +328,11 @@ std::string generate_image_description(const std::string& image_data, const std:
             break;
         }
 
-        std::string token_str = llama_token_to_piece(llama_ctx, id);
+        // Get the model from the context
+        const llama_model* model = llama_get_model(llama_ctx);
+
+        // Use the model instead of the context
+        std::string token_str = llama_token_to_piece(model, id);
         description += token_str;
 
         llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
