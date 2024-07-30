@@ -279,19 +279,25 @@ std::string generate_image_description(const std::string& image_data, const std:
         return "Error: Failed to generate image embedding";
     }
 
-    // Prepare prompt
+// Prepare prompt
     std::string prompt = system_message + "\n\nUser: " + user_message + "\n\nAssistant: ";
     
     // Tokenize the prompt
     std::vector<llama_token> tokens(1024); // Pre-allocate space for tokens
-    int n_tokens = llama_tokenize(llama_model, prompt.c_str(), prompt.length(), tokens.data(), tokens.size(), true);
+    int n_tokens = llama_tokenize(llama_model, 
+                                  prompt.c_str(), 
+                                  prompt.length(), 
+                                  tokens.data(), 
+                                  tokens.size(), 
+                                  true,  // add_special
+                                  true); // parse_special
     if (n_tokens < 0) {
         clip_image_u8_free(clip_image);
         free(image_embed);
         return "Error: Failed to tokenize prompt";
     }
     tokens.resize(n_tokens);
-
+    
     // Generate description
     std::string description;
     int n_past = 0;
