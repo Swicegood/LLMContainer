@@ -1,6 +1,14 @@
 # Use an NVIDIA CUDA base image
 FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
+# Pre-set the timezone to avoid prompts
+ENV TZ=Etc/UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -12,10 +20,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
-
-# Install nlohmann-json
-RUN wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/include/nlohmann/json.hpp
-
+    
 # Set the working directory
 WORKDIR /app
 
