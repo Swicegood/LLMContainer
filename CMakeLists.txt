@@ -12,16 +12,15 @@ find_package(OpenCV REQUIRED)
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
-# CUDA support
 if (LLAVA_CUDA)
     enable_language(CUDA)
     
     # Method 1: Using PkgConfig
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
-        pkg_check_modules(CUBLAS IMPORTED_TARGET)
+        pkg_check_modules(CUBLAS cublas IMPORTED_TARGET)
         if(CUBLAS_FOUND)
-            set(CUDA_LIBRARIES PkgConfig::CUBLAS)
+            set(CUDA_LIBRARIES PkgConfig::cublas)
         endif()
     endif()
     
