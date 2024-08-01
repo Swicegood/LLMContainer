@@ -1,37 +1,48 @@
-# Use an official C++ base image
-FROM gcc:latest
+# Use an NVIDIA CUDA base image
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
+    build-essential \
     cmake \
     libopencv-dev \
     libcurl4-openssl-dev \
-    rapidjson-dev \
     git \
+    wget \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install nlohmann-json
+RUN wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O /usr/include/nlohmann/json.hpp
 
 # Set the working directory
 WORKDIR /app
 
-# Clone the llama.cpp repository
+# Clone the llama.cpp repository (adjust the URL if you're using a fork)
 RUN git clone https://github.com/ggerganov/llama.cpp.git
 
+# Copy your project files
 # Copy the source files
 COPY CMakeLists.txt llava-server.cpp /app/llama.cpp/examples/llava/
+
 
 RUN mkdir -p /app/llama.cpp/examples/llava/include/nlohmann
 
 COPY json.hpp /app/llama.cpp/examples/llava/include/nlohmann/
+
+
 # Build the project
 RUN cd llama.cpp/examples/llava && \
-    cmake . && \
-    make
+    cmake -DLLAVA_CUDA=ON . && \
+    make -j$(nproc)
+
 
 # Expose the port the server will run on
 EXPOSE 8080
 
 # Set the command to run the server
-CMD ["/app/llama.cpp/examples/llava/build/llava-server", \
+CMD ["/app/llama.cpp/examples/llava/build/bin/llava-server", \
      "--model", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
      "--mmproj", "/models/mmproj-model-f16.gguf", \
      "--port", "8080"]

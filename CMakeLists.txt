@@ -13,10 +13,19 @@ find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
 # Add nlohmann/json
-# If you're using the single header file approach:
-include_directories(./include)  # Assuming you've placed the json.hpp file in an 'include' directory
-# If you're using a package manager like vcpkg or Conan, you might need to use find_package instead:
-# find_package(nlohmann_json REQUIRED)
+include_directories(./include)
+
+# Add ggml library
+add_library(ggml STATIC
+    ../../ggml/src/ggml.c
+    ../../ggml/src/ggml-alloc.c
+    ../../ggml/src/ggml-backend.c
+    ../../ggml/src/ggml-quants.c
+)
+target_include_directories(ggml PUBLIC 
+    ../../ggml/include
+    ../../ggml/src
+)
 
 # Add the llama library
 add_library(llama OBJECT
@@ -31,10 +40,9 @@ target_include_directories(llama PUBLIC
     ../../include
     ../../ggml/include
     ../../ggml/src
-    
 )
 
-target_link_libraries(llama PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llama PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llama PRIVATE cxx_std_11)
 
 # Add the llava library
@@ -51,7 +59,7 @@ target_include_directories(llava PUBLIC
     ../../common
 )
 
-target_link_libraries(llava PRIVATE llama ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llava PRIVATE llama ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llava PRIVATE cxx_std_11)
 
 # Add the server executable
@@ -63,6 +71,7 @@ target_link_libraries(llava-server
     PRIVATE
     llama
     llava
+    ggml
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -72,16 +81,19 @@ target_include_directories(llava-server
     PRIVATE
     ${OpenCV_INCLUDE_DIRS}
     ${CURL_INCLUDE_DIRS}
-    ${RAPIDJSON_INCLUDE_DIRS}
     .
     ../..
     ../../common
+    ../../include
+    ../../ggml/include
+    ../../ggml/src
 )
 
 # CUDA support
 if (LLAVA_CUDA)
     add_definitions(-DGGML_USE_CUBLAS)
     find_package(CUDA REQUIRED)
+    target_link_libraries(ggml PRIVATE CUDA::cudart CUDA::cublas)
     target_link_libraries(llama PRIVATE CUDA::cudart CUDA::cublas)
     target_link_libraries(llava PRIVATE CUDA::cudart CUDA::cublas)
     target_link_libraries(llava-server PRIVATE CUDA::cudart CUDA::cublas)
