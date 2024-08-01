@@ -42,6 +42,7 @@ RUN cd llama.cpp/examples/llava && \
     cmake -DLLAVA_CUDA=ON . && \
     make -j$(nproc)
 
+RUN ls
 
 # Expose the port the server will run on
 EXPOSE 8080

@@ -16,28 +16,29 @@ find_package(Threads REQUIRED)
 
 if (LLAVA_CUDA)
     enable_language(CUDA)
-     # Method 1: Using PkgConfig
-     find_package(PkgConfig)
-     if(PkgConfig_FOUND)
-         pkg_check_modules(CUBLAS cublas IMPORTED_TARGET)
-         if(CUBLAS_FOUND)
-             set(CUDA_LIBRARIES PkgConfig::cublas)
-         endif()
-     endif()
-     
-     # Method 2: Using FindCUDAToolkit
-     if(NOT CUBLAS_FOUND)
-         find_package(CUDAToolkit REQUIRED)
-         set(CUDA_LIBRARIES CUDA::cudart CUDA::cublas)
-         
-         # Additional settings for SDK environments
-         set(CUDAToolkit_TARGET_DIR "${CUDA_TOOLKIT_TARGET_DIR}" CACHE PATH "" FORCE)
-         find_library(CUDA_CUDART NAMES cudart HINTS ${CUDA_TOOLKIT_TARGET_DIR} PATH_SUFFIXES lib64 lib)
-     endif()
-     
-     add_definitions(-DGGML_USE_CUBLAS)
- endif()
- 
+   
+    # Method 1: Using PkgConfig
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(CUBLAS cublas IMPORTED_TARGET)
+        if(CUBLAS_FOUND)
+            set(CUDA_LIBRARIES PkgConfig::cublas)
+        endif()
+    endif()
+    
+    # Method 2: Using FindCUDAToolkit
+    if(NOT CUBLAS_FOUND)
+        find_package(CUDAToolkit REQUIRED)
+        set(CUDA_LIBRARIES CUDA::cudart CUDA::cublas)
+        
+        # Additional settings for SDK environments
+        set(CUDAToolkit_TARGET_DIR "${CUDA_TOOLKIT_TARGET_DIR}" CACHE PATH "" FORCE)
+        find_library(CUDA_CUDART NAMES cudart HINTS ${CUDA_TOOLKIT_TARGET_DIR} PATH_SUFFIXES lib64 lib)
+    endif()
+    
+    add_definitions(-DGGML_USE_CUBLAS)
+endif()
+
 # Add nlohmann/json
 include_directories(./include)
 
@@ -47,7 +48,6 @@ set(GGML_SOURCES
     ../../ggml/src/ggml-alloc.c
     ../../ggml/src/ggml-backend.c
     ../../ggml/src/ggml-quants.c
-    ../../ggml/src/ggml-impl.c
 )
 
 if(LLAVA_CUDA)
@@ -138,23 +138,23 @@ target_link_libraries(llava-server
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-if (LLAVA_CUDA)
-    target_link_libraries(llava-server PRIVATE CUDA::cudart CUDA::cublas)
-endif()
+# if (LLAVA_CUDA)
+#     target_link_libraries(llava-server PRIVATE CUDA::cudart CUDA::cublas)
+# endif()
 
-target_include_directories(llava-server
-    PRIVATE
-    ${OpenCV_INCLUDE_DIRS}
-    ${CURL_INCLUDE_DIRS}
-    .
-    ../..
-    ../../common
-    ../../include
-    ../../ggml/include
-    ../../ggml/src
-)
+# target_include_directories(llava-server
+#     PRIVATE
+#     ${OpenCV_INCLUDE_DIRS}
+#     ${CURL_INCLUDE_DIRS}
+#     .
+#     ../..
+#     ../../common
+#     ../../include
+#     ../../ggml/include
+#     ../../ggml/src
+# )
 
-# Installation rules
-install(TARGETS llava-server
-    RUNTIME DESTINATION bin
-)
+# # Installation rules
+# install(TARGETS llava-server
+#     RUNTIME DESTINATION bin
+# )
