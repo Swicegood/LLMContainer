@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Options
 option(LLAVA_CUDA "Enable CUDA support" OFF)
-option(GGML_STATIC "ggml: static link libraries" OFF)
+option(GGML_STATIC "ggml: static link libraries" ON)
 
 # Find required packages
 find_package(OpenCV REQUIRED)
@@ -59,9 +59,11 @@ add_library(ggml STATIC ${GGML_SOURCES})
 set_target_properties(ggml PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_options(ggml PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-fPIC>
     $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function>
     $<$<COMPILE_LANGUAGE:C>:-Wno-unused-variable>
 )
@@ -77,11 +79,11 @@ target_include_directories(ggml PUBLIC
 )
 
 if (LLAVA_CUDA)
-    target_link_libraries(ggml PRIVATE CUDA::cudart CUDA::cublas)
+    target_link_libraries(ggml PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
 # Add the llama library
-add_library(llama
+add_library(llama STATIC
     ../../src/llama.cpp
     ../../include/llama.h
 )
@@ -95,15 +97,15 @@ target_include_directories(llama PUBLIC
     ../../ggml/src
 )
 
-target_link_libraries(llama PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llama PUBLIC ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llama PRIVATE cxx_std_11)
 
 if (LLAVA_CUDA)
-    target_link_libraries(llama PRIVATE CUDA::cudart CUDA::cublas)
+    target_link_libraries(llama PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
 # Add the llava library
-add_library(llava
+add_library(llava STATIC
     ./llava.cpp
     ./llava.h
     ./clip.cpp
@@ -116,11 +118,11 @@ target_include_directories(llava PUBLIC
     ../../common
 )
 
-target_link_libraries(llava PRIVATE llama ggml ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llava PUBLIC llama ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llava PRIVATE cxx_std_11)
 
 if (LLAVA_CUDA)
-    target_link_libraries(llava PRIVATE CUDA::cudart CUDA::cublas)
+    target_link_libraries(llava PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
 # Add the server executable
@@ -130,31 +132,31 @@ add_executable(llava-server
 
 target_link_libraries(llava-server
     PRIVATE
-    llama
     llava
+    llama
     ggml
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-# if (LLAVA_CUDA)
-#     target_link_libraries(llava-server PRIVATE CUDA::cudart CUDA::cublas)
-# endif()
+if (LLAVA_CUDA)
+    target_link_libraries(llava-server PRIVATE CUDA::cudart CUDA::cublas)
+endif()
 
-# target_include_directories(llava-server
-#     PRIVATE
-#     ${OpenCV_INCLUDE_DIRS}
-#     ${CURL_INCLUDE_DIRS}
-#     .
-#     ../..
-#     ../../common
-#     ../../include
-#     ../../ggml/include
-#     ../../ggml/src
-# )
+target_include_directories(llava-server
+    PRIVATE
+    ${OpenCV_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIRS}
+    .
+    ../..
+    ../../common
+    ../../include
+    ../../ggml/include
+    ../../ggml/src
+)
 
-# # Installation rules
-# install(TARGETS llava-server
-#     RUNTIME DESTINATION bin
-# )
+# Installation rules
+install(TARGETS llava-server
+    RUNTIME DESTINATION bin
+)
