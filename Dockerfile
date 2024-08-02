@@ -40,7 +40,7 @@ COPY json.hpp /app/llama.cpp/examples/llava/include/nlohmann/
 # Build the project
 RUN cd llama.cpp/examples/llava && \
     cmake -DLLAVA_CUDA=ON . && \
-    make -j$(nproc)
+    make VERBOSE=1 -j$(nproc)
 
 RUN ls
 
