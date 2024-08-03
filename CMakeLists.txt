@@ -45,6 +45,7 @@ if(LLAVA_CUDA)
     list(APPEND GGML_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda.cu)
 endif()
 
+# [GGML options omitted for brevity]
 # ... (keep the existing ggml options)
 # general
 option(GGML_STATIC "ggml: static link libraries"         OFF)
@@ -146,9 +147,6 @@ set   (GGML_SYCL_TARGET "INTEL" CACHE STRING
 # extra artifacts
 option(GGML_BUILD_TESTS    "ggml: build tests"    ${GGML_STANDALONE})
 option(GGML_BUILD_EXAMPLES "ggml: build examples" ${GGML_STANDALONE})
-
-
-
 # Debug output
 message(STATUS "GGML_SOURCES before filtering: ${GGML_SOURCES}")
 
@@ -195,6 +193,7 @@ foreach(source ${GGML_SOURCES_FILTERED})
             OUTPUT ${output_file}
             COMMAND ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
                     -DGGML_BUILD
+                    -D_GNU_SOURCE
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../
@@ -215,6 +214,7 @@ add_library(ggml_library STATIC IMPORTED GLOBAL)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
     COMMAND ${CMAKE_AR} rcs ${CMAKE_CURRENT_BINARY_DIR}/libggml.a ${GGML_OBJECTS}
+    COMMAND ${CMAKE_RANLIB} ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
     DEPENDS ggml_objects
     COMMENT "Creating libggml.a"
 )
@@ -224,6 +224,9 @@ set_target_properties(ggml_library PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
 )
 
+# Link against necessary libraries
+target_link_libraries(ggml_library INTERFACE pthread m rt)
+
 if (LLAVA_CUDA)
     target_link_libraries(ggml_library INTERFACE CUDA::cudart CUDA::cublas)
 endif()
@@ -232,7 +235,6 @@ endif()
 get_target_property(GGML_SOURCES ggml_library_target SOURCES)
 message(STATUS "GGML_SOURCES after target creation: ${GGML_SOURCES}")
 
-# Rest of the CMakeLists.txt remains the same...
 # Add the llama library
 add_library(llama STATIC
     ../../src/llama.cpp
@@ -308,6 +310,9 @@ target_link_libraries(llava-server
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
+    pthread
+    m
+    rt
 )
 
 if (LLAVA_CUDA)
