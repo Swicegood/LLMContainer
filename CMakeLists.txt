@@ -45,6 +45,7 @@ if(LLAVA_CUDA)
     list(APPEND GGML_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda.cu)
 endif()
 
+# ... (keep the existing ggml options)
 # general
 option(GGML_STATIC "ggml: static link libraries"         OFF)
 option(GGML_NATIVE "ggml: enable -march=native flag"     ${GGML_NATIVE_DEFAULT})
@@ -164,61 +165,18 @@ endforeach()
 
 message(STATUS "GGML_SOURCES after filtering: ${GGML_SOURCES_FILTERED}")
 
-# ... (keep the existing ggml options)
+# Create a custom target for compiling ggml sources
+add_custom_target(ggml_objects)
 
-add_library(ggml STATIC ${GGML_SOURCES_FILTERED})
-
-
-
-set_target_properties(ggml PROPERTIES
-    C_STANDARD 11
-    C_STANDARD_REQUIRED ON
-    POSITION_INDEPENDENT_CODE ON
-)
-
-# all public headers
-set(GGML_PUBLIC_HEADERS
-    ../../ggml/include/ggml.h
-    ../../ggml/include/ggml-alloc.h
-    ../../ggml/include/ggml-backend.h
-    ../../ggml/include/ggml-quants.h
-    ../../ggml/include/ggml-aarch64.h
-    ../../ggml/include/ggml-cuda.h
-)
-
-set_target_properties(ggml PROPERTIES PUBLIC_HEADER "${GGML_PUBLIC_HEADERS}")
-
-target_compile_definitions(ggml PUBLIC GGML_SHARED)
-target_compile_options(ggml PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-fPIC>
-    $<$<COMPILE_LANGUAGE:C>:-fvisibility=default>
-    $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function>
-    $<$<COMPILE_LANGUAGE:C>:-Wno-unused-variable>
-)
-
-if (LLAVA_CUDA)
-    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda.cu PROPERTIES LANGUAGE CUDA)
-    target_compile_options(ggml PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
-endif()
-
-target_include_directories(ggml PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda
-)
-
-# ... (previous content remains the same)
-
-# Force compilation of each ggml source file
+# Compile each ggml source file
 foreach(source ${GGML_SOURCES_FILTERED})
-    get_filename_component(source_name ${source} NAME)
+    get_filename_component(source_name ${source} NAME_WE)
     get_filename_component(source_ext ${source} EXT)
-    set_source_files_properties(${source} PROPERTIES COMPILE_FLAGS "-DGGML_BUILD")
     
     if(${source_ext} STREQUAL ".cu")
-        # CUDA file compilation
+        set(output_file ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.cu.o)
         add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            OUTPUT ${output_file}
             COMMAND ${CMAKE_CUDA_COMPILER} ${CMAKE_CUDA_FLAGS}
                     -DGGML_BUILD
                     -DGGML_USE_CUBLAS
@@ -227,58 +185,71 @@ foreach(source ${GGML_SOURCES_FILTERED})
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../
                     -I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
                     -c ${source}
-                    -o ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+                    -o ${output_file}
             DEPENDS ${source}
             COMMENT "Compiling CUDA file ${source_name}"
         )
     else()
-        # C file compilation
+        set(output_file ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o)
         add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            OUTPUT ${output_file}
             COMMAND ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
                     -DGGML_BUILD
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../
                     -c ${source}
-                    -o ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+                    -o ${output_file}
             DEPENDS ${source}
             COMMENT "Compiling ${source_name}"
         )
     endif()
     
-    list(APPEND GGML_OBJECTS ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o)
+    list(APPEND GGML_OBJECTS ${output_file})
+    add_custom_target(ggml_object_${source_name} DEPENDS ${output_file})
+    add_dependencies(ggml_objects ggml_object_${source_name})
 endforeach()
 
 # Create the ggml library from the compiled objects
+add_library(ggml_library STATIC IMPORTED GLOBAL)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
     COMMAND ${CMAKE_AR} rcs ${CMAKE_CURRENT_BINARY_DIR}/libggml.a ${GGML_OBJECTS}
-    DEPENDS ${GGML_OBJECTS}
+    DEPENDS ggml_objects
     COMMENT "Creating libggml.a"
 )
-
-add_custom_target(ggml_library ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libggml.a)
-
-
+add_custom_target(ggml_library_target DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libggml.a)
+add_dependencies(ggml_library ggml_library_target)
+set_target_properties(ggml_library PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
+)
 
 if (LLAVA_CUDA)
-    target_link_libraries(ggml PUBLIC CUDA::cudart CUDA::cublas)
+    target_link_libraries(ggml_library INTERFACE CUDA::cudart CUDA::cublas)
 endif()
 
-
-
 # Debug output
-get_target_property(GGML_SOURCES ggml SOURCES)
+get_target_property(GGML_SOURCES ggml_library_target SOURCES)
 message(STATUS "GGML_SOURCES after target creation: ${GGML_SOURCES}")
 
 # Rest of the CMakeLists.txt remains the same...
 # Add the llama library
-
-
 add_library(llama STATIC
     ../../src/llama.cpp
     ../../include/llama.h
+    ../../src/unicode.h
+    ../../src/llama-vocab.h
+    ../../src/llama-vocab.cpp
+    ../../src/unicode.cpp
+    ../../src/llama-grammar.cpp
+    ../../src/llama-grammar.h
+    ../../src/llama-sampling.h
+    ../../src/llama-sampling.cpp
+    ../../src/unicode-data.cpp
+    ../../src/unicode-data.h
+    ../../src/llama-impl.h
+    ../../common/common.cpp
+    ../../common/common.h
 )
 
 target_include_directories(llama PUBLIC
@@ -288,10 +259,11 @@ target_include_directories(llama PUBLIC
     ../../include
     ../../ggml/include
     ../../ggml/src
+    ../../src
 )
 
 target_link_libraries(llama PUBLIC 
-    $<TARGET_FILE:ggml_library> 
+    ggml_library
     ${CMAKE_THREAD_LIBS_INIT}
 )
 target_compile_features(llama PRIVATE cxx_std_11)
@@ -300,7 +272,8 @@ if (LLAVA_CUDA)
     target_link_libraries(llama PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
-add_dependencies(llama ggml_library)
+add_dependencies(llama ggml_library_target)
+
 # Add the llava library
 add_library(llava STATIC
     ./llava.cpp
@@ -315,10 +288,7 @@ target_include_directories(llava PUBLIC
     ../../common
 )
 
-# Add dependency on ggml_library
-add_dependencies(llama ggml_library)
-
-target_link_libraries(llava PUBLIC llama ggml ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llava PUBLIC llama ggml_library ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llava PRIVATE cxx_std_11)
 
 if (LLAVA_CUDA)
@@ -330,14 +300,11 @@ add_executable(llava-server
     llava-server.cpp
 )
 
-# Add dependency on ggml_library
-add_dependencies(llava-server ggml_library)
-
 target_link_libraries(llava-server
     PRIVATE
     llava
     llama
-    $<TARGET_FILE:ggml_library>
+    ggml_library
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -357,6 +324,7 @@ target_include_directories(llava-server
     ../../include
     ../../ggml/include
     ../../ggml/src
+    ../../src
 )
 
 # Installation rules
