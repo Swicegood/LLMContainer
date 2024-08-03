@@ -36,7 +36,7 @@ def get_image_description(image_path):
         "max_tokens": 500,
     }
 
-    response = requests.post('http://localhost:8080', headers=headers, json=data)
+    response = requests.post('http://192.168.0.213:9000', headers=headers, json=data)
     
     if response.status_code == 200:
         return response.json()['choices'][0]['message']['content']
@@ -44,6 +44,6 @@ def get_image_description(image_path):
         return f"Error: {response.status_code} - {response.text}"
 
 # Test the server
-image_path = 'path/to/your/image.jpg'
+image_path = './test.jpg'
 description = get_image_description(image_path)
 print(f"Image description: {description}")

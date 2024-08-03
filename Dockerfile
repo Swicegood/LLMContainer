@@ -50,7 +50,7 @@ RUN ls
 EXPOSE 8080
 
 # Set the command to run the server
-CMD ["/app/llama.cpp/examples/llava/build/bin/llava-server", \
+CMD ["/app/llama.cpp/examples/llava/llava-server", \
      "--model", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
      "--mmproj", "/models/mmproj-model-f16.gguf", \
      "--port", "8080"]
