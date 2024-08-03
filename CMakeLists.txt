@@ -1,5 +1,11 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.18)  # Increased to 3.18 for better CUDA support
+message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
 project(llava-server CUDA CXX)
+
+# Set CMake policy CMP0104 to NEW
+cmake_policy(SET CMP0104 NEW)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -15,26 +21,12 @@ find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
 if (LLAVA_CUDA)
-    enable_language(CUDA)   # Method 1: Using PkgConfig
-    find_package(PkgConfig)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(CUBLAS cublas IMPORTED_TARGET)
-        if(CUBLAS_FOUND)
-            set(CUDA_LIBRARIES PkgConfig::cublas)
-        endif()
-    endif()
-    
-    # Method 2: Using FindCUDAToolkit
-    if(NOT CUBLAS_FOUND)
-        find_package(CUDAToolkit REQUIRED)
-        set(CUDA_LIBRARIES CUDA::cudart CUDA::cublas)
-        
-        # Additional settings for SDK environments
-        set(CUDAToolkit_TARGET_DIR "${CUDA_TOOLKIT_TARGET_DIR}" CACHE PATH "" FORCE)
-        find_library(CUDA_CUDART NAMES cudart HINTS ${CUDA_TOOLKIT_TARGET_DIR} PATH_SUFFIXES lib64 lib)
-    endif()
-    
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
     add_definitions(-DGGML_USE_CUBLAS)
+    
+    # Set CUDA architectures
+    set(CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80 86)
 endif()
 
 # Add nlohmann/json
@@ -46,29 +38,155 @@ set(GGML_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-alloc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-backend.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-quants.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-aarch64.c
 )
 
 if(LLAVA_CUDA)
     list(APPEND GGML_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda.cu)
 endif()
 
+# general
+option(GGML_STATIC "ggml: static link libraries"         OFF)
+option(GGML_NATIVE "ggml: enable -march=native flag"     ${GGML_NATIVE_DEFAULT})
+option(GGML_LTO    "ggml: enable link time optimization" OFF)
+option(GGML_CCACHE "ggml: use ccache if available"       ON)
+
+# debug
+option(GGML_ALL_WARNINGS           "ggml: enable all compiler warnings"                   ON)
+option(GGML_ALL_WARNINGS_3RD_PARTY "ggml: enable all compiler warnings in 3rd party libs" OFF)
+option(GGML_GPROF                  "ggml: enable gprof"                                   OFF)
+
+# build
+option(GGML_FATAL_WARNINGS    "ggml: enable -Werror flag"    OFF)
+
+# sanitizers
+option(GGML_SANITIZE_THREAD    "ggml: enable thread sanitizer"    OFF)
+option(GGML_SANITIZE_ADDRESS   "ggml: enable address sanitizer"   OFF)
+option(GGML_SANITIZE_UNDEFINED "ggml: enable undefined sanitizer" OFF)
+
+# instruction set specific
+if (GGML_NATIVE OR NOT GGML_NATIVE_DEFAULT)
+    set(INS_ENB OFF)
+else()
+    set(INS_ENB ON)
+endif()
+
+option(GGML_CPU_HBM     "ggml: use memkind for CPU HBM" OFF)
+
+option(GGML_AVX         "ggml: enable AVX"              ${INS_ENB})
+option(GGML_AVX2        "ggml: enable AVX2"             ${INS_ENB})
+option(GGML_AVX512      "ggml: enable AVX512"           OFF)
+option(GGML_AVX512_VBMI "ggml: enable AVX512-VBMI"      OFF)
+option(GGML_AVX512_VNNI "ggml: enable AVX512-VNNI"      OFF)
+option(GGML_AVX512_BF16 "ggml: enable AVX512-BF16"      OFF)
+option(GGML_FMA         "ggml: enable FMA"              ${INS_ENB})
+if (NOT MSVC)
+    option(GGML_F16C    "ggml: enable F16C"             ${INS_ENB}) # in MSVC F16C is implied with AVX2/AVX512
+endif()
+option(GGML_LASX        "ggml: enable lasx"             ON)
+option(GGML_LSX         "ggml: enable lsx"              ON)
+option(GGML_SVE         "ggml: enable SVE"              OFF)
+
+if (WIN32)
+    set(GGML_WIN_VER "0x602" CACHE STRING "ggml: Windows Version")
+endif()
+
+# ggml core
+set(GGML_SCHED_MAX_COPIES  "4" CACHE STRING "ggml: max input copies for pipeline parallelism")
+
+# 3rd party libs / backends
+option(GGML_ACCELERATE                      "ggml: enable Accelerate framework"               ON)
+option(GGML_BLAS                            "ggml: use BLAS"                                  ${GGML_BLAS_DEFAULT})
+set(GGML_BLAS_VENDOR ${GGML_BLAS_VENDOR_DEFAULT} CACHE STRING
+                                            "ggml: BLAS library vendor")
+option(GGML_LLAMAFILE                       "ggml: use LLAMAFILE"                             OFF)
+
+option(GGML_CUDA                            "ggml: use CUDA"                                  OFF)
+option(GGML_MUSA                            "ggml: use MUSA"                                  OFF)
+option(GGML_CUDA_FORCE_DMMV                 "ggml: use dmmv instead of mmvq CUDA kernels"     OFF)
+option(GGML_CUDA_FORCE_MMQ                  "ggml: use mmq kernels instead of cuBLAS"         OFF)
+option(GGML_CUDA_FORCE_CUBLAS               "ggml: always use cuBLAS instead of mmq kernels"  OFF)
+set   (GGML_CUDA_DMMV_X   "32" CACHE STRING "ggml: x stride for dmmv CUDA kernels")
+set   (GGML_CUDA_MMV_Y     "1" CACHE STRING "ggml: y block size for mmv CUDA kernels")
+option(GGML_CUDA_F16                        "ggml: use 16 bit floats for some calculations"   OFF)
+set   (GGML_CUDA_KQUANTS_ITER "2" CACHE STRING
+                                            "ggml: iters./thread per block for Q2_K/Q6_K")
+set   (GGML_CUDA_PEER_MAX_BATCH_SIZE "128" CACHE STRING
+                                            "ggml: max. batch size for using peer access")
+option(GGML_CUDA_NO_PEER_COPY               "ggml: do not use peer to peer copies"            OFF)
+option(GGML_CUDA_NO_VMM                     "ggml: do not try to use CUDA VMM"                OFF)
+option(GGML_CUDA_FA_ALL_QUANTS              "ggml: compile all quants for FlashAttention"     OFF)
+option(GGML_CUDA_USE_GRAPHS                 "ggml: use CUDA graphs (llama.cpp only)"          OFF)
+
+option(GGML_CURL                            "ggml: use libcurl to download model from an URL" OFF)
+option(GGML_HIPBLAS                         "ggml: use hipBLAS"                               OFF)
+option(GGML_HIP_UMA                         "ggml: use HIP unified memory architecture"       OFF)
+option(GGML_VULKAN                          "ggml: use Vulkan"                                OFF)
+option(GGML_VULKAN_CHECK_RESULTS            "ggml: run Vulkan op checks"                      OFF)
+option(GGML_VULKAN_DEBUG                    "ggml: enable Vulkan debug output"                OFF)
+option(GGML_VULKAN_MEMORY_DEBUG             "ggml: enable Vulkan memory debug output"         OFF)
+option(GGML_VULKAN_VALIDATE                 "ggml: enable Vulkan validation"                  OFF)
+option(GGML_VULKAN_RUN_TESTS                "ggml: run Vulkan tests"                          OFF)
+option(GGML_KOMPUTE                         "ggml: use Kompute"                               OFF)
+option(GGML_METAL                           "ggml: use Metal"                                 ${GGML_METAL_DEFAULT})
+option(GGML_METAL_NDEBUG                    "ggml: disable Metal debugging"                   OFF)
+option(GGML_METAL_SHADER_DEBUG              "ggml: compile Metal with -fno-fast-math"         OFF)
+option(GGML_METAL_EMBED_LIBRARY             "ggml: embed Metal library"                       ${GGML_METAL})
+set   (GGML_METAL_MACOSX_VERSION_MIN "" CACHE STRING
+                                            "ggml: metal minimum macOS version")
+set   (GGML_METAL_STD "" CACHE STRING       "ggml: metal standard version (-std flag)")
+option(GGML_OPENMP                          "ggml: use OpenMP"                                ON)
+option(GGML_RPC                             "ggml: use RPC"                                   OFF)
+option(GGML_SYCL                            "ggml: use SYCL"                                  OFF)
+option(GGML_SYCL_F16                        "ggml: use 16 bit floats for sycl calculations"   OFF)
+set   (GGML_SYCL_TARGET "INTEL" CACHE STRING
+                                            "ggml: sycl target device")
+
+# extra artifacts
+option(GGML_BUILD_TESTS    "ggml: build tests"    ${GGML_STANDALONE})
+option(GGML_BUILD_EXAMPLES "ggml: build examples" ${GGML_STANDALONE})
+
+
+
 # Debug output
-message(STATUS "GGML_SOURCES: ${GGML_SOURCES}")
+message(STATUS "GGML_SOURCES before filtering: ${GGML_SOURCES}")
+
+# Filter out non-existent files
+set(GGML_SOURCES_FILTERED)
 foreach(source ${GGML_SOURCES})
     if(EXISTS "${source}")
-        message(STATUS "File exists: ${source}")
+        list(APPEND GGML_SOURCES_FILTERED ${source})
+        message(STATUS "File exists and will be compiled: ${source}")
     else()
-        message(WARNING "File does not exist: ${source}")
+        message(WARNING "File does not exist and will be skipped: ${source}")
     endif()
 endforeach()
 
-add_library(ggml STATIC ${GGML_SOURCES})
+message(STATUS "GGML_SOURCES after filtering: ${GGML_SOURCES_FILTERED}")
+
+# ... (keep the existing ggml options)
+
+add_library(ggml STATIC ${GGML_SOURCES_FILTERED})
+
+
 
 set_target_properties(ggml PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED ON
     POSITION_INDEPENDENT_CODE ON
 )
+
+# all public headers
+set(GGML_PUBLIC_HEADERS
+    ../../ggml/include/ggml.h
+    ../../ggml/include/ggml-alloc.h
+    ../../ggml/include/ggml-backend.h
+    ../../ggml/include/ggml-quants.h
+    ../../ggml/include/ggml-aarch64.h
+    ../../ggml/include/ggml-cuda.h
+)
+
+set_target_properties(ggml PROPERTIES PUBLIC_HEADER "${GGML_PUBLIC_HEADERS}")
 
 target_compile_definitions(ggml PUBLIC GGML_SHARED)
 target_compile_options(ggml PRIVATE
@@ -86,11 +204,69 @@ endif()
 target_include_directories(ggml PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src/ggml-cuda
 )
+
+# ... (previous content remains the same)
+
+# Force compilation of each ggml source file
+foreach(source ${GGML_SOURCES_FILTERED})
+    get_filename_component(source_name ${source} NAME)
+    get_filename_component(source_ext ${source} EXT)
+    set_source_files_properties(${source} PROPERTIES COMPILE_FLAGS "-DGGML_BUILD")
+    
+    if(${source_ext} STREQUAL ".cu")
+        # CUDA file compilation
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            COMMAND ${CMAKE_CUDA_COMPILER} ${CMAKE_CUDA_FLAGS}
+                    -DGGML_BUILD
+                    -DGGML_USE_CUBLAS
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../
+                    -I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+                    -c ${source}
+                    -o ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            DEPENDS ${source}
+            COMMENT "Compiling CUDA file ${source_name}"
+        )
+    else()
+        # C file compilation
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            COMMAND ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
+                    -DGGML_BUILD
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/src
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../
+                    -c ${source}
+                    -o ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o
+            DEPENDS ${source}
+            COMMENT "Compiling ${source_name}"
+        )
+    endif()
+    
+    list(APPEND GGML_OBJECTS ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o)
+endforeach()
+
+# Create the ggml library from the compiled objects
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libggml.a
+    COMMAND ${CMAKE_AR} rcs ${CMAKE_CURRENT_BINARY_DIR}/libggml.a ${GGML_OBJECTS}
+    DEPENDS ${GGML_OBJECTS}
+    COMMENT "Creating libggml.a"
+)
+
+add_custom_target(ggml_library ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libggml.a)
+
+
 
 if (LLAVA_CUDA)
     target_link_libraries(ggml PUBLIC CUDA::cudart CUDA::cublas)
 endif()
+
+
 
 # Debug output
 get_target_property(GGML_SOURCES ggml SOURCES)
@@ -98,6 +274,8 @@ message(STATUS "GGML_SOURCES after target creation: ${GGML_SOURCES}")
 
 # Rest of the CMakeLists.txt remains the same...
 # Add the llama library
+
+
 add_library(llama STATIC
     ../../src/llama.cpp
     ../../include/llama.h
@@ -112,13 +290,17 @@ target_include_directories(llama PUBLIC
     ../../ggml/src
 )
 
-target_link_libraries(llama PUBLIC ggml ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llama PUBLIC 
+    $<TARGET_FILE:ggml_library> 
+    ${CMAKE_THREAD_LIBS_INIT}
+)
 target_compile_features(llama PRIVATE cxx_std_11)
 
 if (LLAVA_CUDA)
     target_link_libraries(llama PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
+add_dependencies(llama ggml_library)
 # Add the llava library
 add_library(llava STATIC
     ./llava.cpp
@@ -133,6 +315,9 @@ target_include_directories(llava PUBLIC
     ../../common
 )
 
+# Add dependency on ggml_library
+add_dependencies(llama ggml_library)
+
 target_link_libraries(llava PUBLIC llama ggml ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(llava PRIVATE cxx_std_11)
 
@@ -145,11 +330,14 @@ add_executable(llava-server
     llava-server.cpp
 )
 
+# Add dependency on ggml_library
+add_dependencies(llava-server ggml_library)
+
 target_link_libraries(llava-server
     PRIVATE
     llava
     llama
-    ggml
+    $<TARGET_FILE:ggml_library>
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
@@ -175,3 +363,10 @@ target_include_directories(llava-server
 install(TARGETS llava-server
     RUNTIME DESTINATION bin
 )
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/build_info.txt" CONTENT
+"C compiler: ${CMAKE_C_COMPILER}
+CXX compiler: ${CMAKE_CXX_COMPILER}
+CUDA compiler: ${CMAKE_CUDA_COMPILER}
+GGML_SOURCES: ${GGML_SOURCES}
+")
