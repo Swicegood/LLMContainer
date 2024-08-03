@@ -38,6 +38,7 @@ llama_context *llama_ctx;
 std::string process_request(const std::string &request_body);
 std::string generate_image_description(const std::string &image_data, const std::string &system_message, const std::string &user_message);
 std::string base64_decode(const std::string &encoded_string);
+std::string generate_text_response(const std::string &system_message, const std::string &user_message);
 
 // Main function
 int main(int argc, char *argv[])
@@ -219,7 +220,11 @@ std::string process_request(const std::string &request_body)
         }
         else if (role == "user")
         {
-            if (message["content"].is_array())
+            if (message["content"].is_string())
+            {
+                user_message = message["content"];
+            }
+            else if (message["content"].is_array())
             {
                 for (const auto &content : message["content"])
                 {
@@ -240,15 +245,18 @@ std::string process_request(const std::string &request_body)
         }
     }
 
-    if (image_data.empty())
+    std::string response_content;
+    if (!image_data.empty())
     {
-        return "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\": \"No valid image data found\"}";
+        response_content = generate_image_description(image_data, system_message, user_message);
+    }
+    else
+    {
+        response_content = generate_text_response(system_message, user_message);
     }
 
-    std::string description = generate_image_description(image_data, system_message, user_message);
-
     json response = {
-        {"choices", {{{"message", {{"role", "assistant"}, {"content", description}}}}}}};
+        {"choices", {{{"message", {{"role", "assistant"}, {"content", response_content}}}}}}};
 
     std::string response_body = response.dump();
     std::string http_response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response_body;
@@ -417,4 +425,68 @@ std::string generate_image_description(const std::string &image_data, const std:
     clip_image_u8_free(clip_image);
     free(image_embed);
     return description;
+}
+
+std::string generate_text_response(const std::string &system_message, const std::string &user_message)
+{
+    // Prepare prompt
+    std::string prompt = system_message + "\n\nUser: " + user_message + "\n\nAssistant: ";
+
+    // Tokenize the prompt
+    std::vector<llama_token> tokens(1024); // Pre-allocate space for tokens
+    int n_tokens = llama_tokenize(llama_model,
+                                  prompt.c_str(),
+                                  prompt.length(),
+                                  tokens.data(),
+                                  tokens.size(),
+                                  true,  // add_special
+                                  true); // parse_special
+    if (n_tokens < 0)
+    {
+        return "Error: Failed to tokenize prompt";
+    }
+    tokens.resize(n_tokens);
+
+    // Generate response
+    std::string response;
+    int n_past = 0;
+
+    // Process tokens
+    for (size_t i = 0; i < tokens.size(); ++i)
+    {
+        llama_batch batch = llama_batch_get_one(&tokens[i], 1, n_past, 0);
+        if (llama_decode(llama_ctx, batch))
+        {
+            return "Error: Failed to decode tokens";
+        }
+        n_past++;
+    }
+
+    llama_token id = 0;
+    char token_buf[8]; // Buffer to store the token piece, adjust size if needed
+    for (int i = 0; i < 500; ++i)
+    { // Generate up to 500 tokens
+        llama_token_data_array candidates = {NULL, 0, false};
+        id = llama_sample_token(llama_ctx, &candidates);
+
+        if (llama_token_eos(llama_model) == id)
+        {
+            break;
+        }
+
+        int token_length = llama_token_to_piece(llama_model, id, token_buf, sizeof(token_buf), 0, false);
+        if (token_length > 0)
+        {
+            response.append(token_buf, token_length);
+        }
+
+        llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
+        if (llama_decode(llama_ctx, batch))
+        {
+            break;
+        }
+        n_past++;
+    }
+
+    return response;
 }
