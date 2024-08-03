@@ -142,7 +142,8 @@ std::string process_request(const std::string& request_body) {
     try {
         request = json::parse(request_body);
     } catch (json::parse_error& e) {
-        return "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\": \"Invalid JSON\"}";
+        std::string error_msg = "Invalid JSON: " + std::string(e.what()) + ". Request body: " + request_body;
+        return "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\": \"" + error_msg + "\"}";
     }
 
     if (!request.contains("messages") || !request["messages"].is_array()) {
