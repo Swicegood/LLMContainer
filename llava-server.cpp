@@ -95,8 +95,6 @@ int main(int argc, char *argv[])
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = 2048; // adjust as needed
-    std::cout << "n_ctx: " << params.n_ctx << std::endl;
-    std::cout << "n_batch: " << params.n_batch << std::endl;
     llama_ctx = llama_new_context_with_model(llama_model, ctx_params);
 
     if (llama_ctx == NULL)
