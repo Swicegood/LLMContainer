@@ -81,18 +81,24 @@ int main(int argc, char *argv[])
     llama_backend_init();
 
     llama_model_params model_params = llama_model_default_params();
+    model_params.n_gpu_layers = 32; // for 7B model, adjust based on your model size
+    // model_params.n_gpu_layers = -1;  // Alternative: use -1 to offload all layers to GPU
+
     llama_model = llama_load_model_from_file(model_path.c_str(), model_params);
-    if (!llama_model)
+    if (llama_model == NULL)
     {
-        std::cerr << "Failed to load LLaMA model" << std::endl;
+        fprintf(stderr, "%s: error: unable to load model '%s'\n", __func__, model_path.c_str());
         return 1;
     }
 
     llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_ctx = 2048;      // adjust as needed
     llama_ctx = llama_new_context_with_model(llama_model, ctx_params);
-    if (!llama_ctx)
+
+    if (llama_ctx == NULL)
     {
-        std::cerr << "Failed to create LLaMA context" << std::endl;
+        fprintf(stderr, "%s: error: failed to create context\n", __func__);
+        llama_free_model(llama_model);
         return 1;
     }
 
@@ -185,6 +191,7 @@ int main(int argc, char *argv[])
 
 std::string process_request(const std::string &request_body)
 {
+    std::cout << "Received request: " << request_body << std::endl;
     json request;
     try
     {
@@ -248,12 +255,16 @@ std::string process_request(const std::string &request_body)
     std::string response_content;
     if (!image_data.empty())
     {
+        std::cout << "Processing image request" << std::endl;
         response_content = generate_image_description(image_data, system_message, user_message);
     }
     else
     {
+        std::cout << "Processing text request" << std::endl;
         response_content = generate_text_response(system_message, user_message);
     }
+
+    std::cout << "Response content: " << response_content << std::endl;
 
     json response = {
         {"choices", {{{"message", {{"role", "assistant"}, {"content", response_content}}}}}}};
@@ -429,8 +440,11 @@ std::string generate_image_description(const std::string &image_data, const std:
 
 std::string generate_text_response(const std::string &system_message, const std::string &user_message)
 {
+    std::cout << "Entering generate_text_response" << std::endl;
+
     // Prepare prompt
     std::string prompt = system_message + "\n\nUser: " + user_message + "\n\nAssistant: ";
+    std::cout << "Prompt: " << prompt << std::endl;
 
     // Tokenize the prompt
     std::vector<llama_token> tokens(1024); // Pre-allocate space for tokens
@@ -439,13 +453,15 @@ std::string generate_text_response(const std::string &system_message, const std:
                                   prompt.length(),
                                   tokens.data(),
                                   tokens.size(),
-                                  true,  // add_special
-                                  true); // parse_special
+                                  true,   // add_bos
+                                  false); // add_eos
     if (n_tokens < 0)
     {
+        std::cerr << "Error: Failed to tokenize prompt" << std::endl;
         return "Error: Failed to tokenize prompt";
     }
     tokens.resize(n_tokens);
+    std::cout << "Tokenized " << n_tokens << " tokens" << std::endl;
 
     // Generate response
     std::string response;
@@ -457,6 +473,7 @@ std::string generate_text_response(const std::string &system_message, const std:
         llama_batch batch = llama_batch_get_one(&tokens[i], 1, n_past, 0);
         if (llama_decode(llama_ctx, batch))
         {
+            std::cerr << "Error: Failed to decode tokens at position " << i << std::endl;
             return "Error: Failed to decode tokens";
         }
         n_past++;
@@ -466,11 +483,18 @@ std::string generate_text_response(const std::string &system_message, const std:
     char token_buf[8]; // Buffer to store the token piece, adjust size if needed
     for (int i = 0; i < 500; ++i)
     { // Generate up to 500 tokens
+        if (llama_get_kv_cache_token_count(llama_ctx) >= llama_n_ctx(llama_ctx))
+        {
+            std::cout << "Context limit reached. Stopping generation." << std::endl;
+            break;
+        }
+
         llama_token_data_array candidates = {NULL, 0, false};
         id = llama_sample_token(llama_ctx, &candidates);
 
         if (llama_token_eos(llama_model) == id)
         {
+            std::cout << "EOS token encountered. Stopping generation." << std::endl;
             break;
         }
 
@@ -483,10 +507,12 @@ std::string generate_text_response(const std::string &system_message, const std:
         llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
         if (llama_decode(llama_ctx, batch))
         {
+            std::cerr << "Error: Failed to decode generated token at position " << i << std::endl;
             break;
         }
         n_past++;
     }
 
+    std::cout << "Generated response: " << response << std::endl;
     return response;
 }
