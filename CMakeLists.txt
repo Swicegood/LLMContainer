@@ -7,10 +7,10 @@ project(llava-server CUDA CXX)
 
 if(LLAVA_DEBUG)
     set(CMAKE_BUILD_TYPE Debug)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
     if(LLAVA_CUDA)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -g -G")
+        set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -g -G")
     endif()
     message(STATUS "Debug symbols enabled")
 else()
@@ -184,11 +184,17 @@ foreach(source ${GGML_SOURCES_FILTERED})
     get_filename_component(source_name ${source} NAME_WE)
     get_filename_component(source_ext ${source} EXT)
     
+    set(output_file ${CMAKE_CURRENT_BINARY_DIR}/${source_name}${source_ext}.o)
+    
     if(${source_ext} STREQUAL ".cu")
-        set(output_file ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.cu.o)
+        set(cuda_flags ${CMAKE_CUDA_FLAGS})
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            list(APPEND cuda_flags -g -G)
+        endif()
         add_custom_command(
             OUTPUT ${output_file}
-            COMMAND ${CMAKE_CUDA_COMPILER} ${CMAKE_CUDA_FLAGS}
+            COMMAND ${CMAKE_CUDA_COMPILER}
+                    ${cuda_flags}
                     -DGGML_BUILD
                     -DGGML_USE_CUBLAS
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
@@ -201,11 +207,14 @@ foreach(source ${GGML_SOURCES_FILTERED})
             COMMENT "Compiling CUDA file ${source_name}"
         )
     else()
-        set(output_file ${CMAKE_CURRENT_BINARY_DIR}/${source_name}.o)
+        set(c_flags ${CMAKE_C_FLAGS})
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+            list(APPEND c_flags -g)
+        endif()
         add_custom_command(
             OUTPUT ${output_file}
-            COMMAND ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
-                    $<$<BOOL:${LLAVA_DEBUG}>:-g>
+            COMMAND ${CMAKE_C_COMPILER}
+                    ${c_flags}
                     -DGGML_BUILD
                     -D_GNU_SOURCE
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
@@ -214,7 +223,7 @@ foreach(source ${GGML_SOURCES_FILTERED})
                     -c ${source}
                     -o ${output_file}
             DEPENDS ${source}
-            COMMENT "Compiling ${source_name}"
+            COMMENT "Compiling C file ${source_name}"
         )
     endif()
     

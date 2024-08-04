@@ -43,6 +43,7 @@ COPY json.hpp /app/llama.cpp/examples/llava/include/nlohmann/
 RUN cd llama.cpp/examples/llava && \
     cmake -DCMAKE_C_COMPILER=/usr/bin/gcc \
           -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+          -DLLAVA_DEBUG=ON \
           -DLLAVA_CUDA=ON . && \
     make VERBOSE=1 -j$(nproc)
 

@@ -129,6 +129,10 @@ int main(int argc, char *argv[])
 
     std::cout << "Server listening on port " << port << std::endl;
 
+    std::cout << "Testing model with a simple prompt..." << std::endl;
+    std::string test_response = generate_text_response("", "Hello, world!");
+    std::cout << "Test response: " << test_response << std::endl;
+
     while (true)
     {
         int client_socket = accept(server_fd, nullptr, nullptr);
@@ -453,7 +457,7 @@ std::string generate_text_response(const std::string &system_message, const std:
                                   prompt.length(),
                                   tokens.data(),
                                   tokens.size(),
-                                  true,   // add_bos
+                                  true,  // add_bos
                                   false); // add_eos
     if (n_tokens < 0)
     {
@@ -467,9 +471,11 @@ std::string generate_text_response(const std::string &system_message, const std:
     std::string response;
     int n_past = 0;
 
+    std::cout << "Starting token processing" << std::endl;
     // Process tokens
     for (size_t i = 0; i < tokens.size(); ++i)
     {
+        std::cout << "Processing token " << i << std::endl;
         llama_batch batch = llama_batch_get_one(&tokens[i], 1, n_past, 0);
         if (llama_decode(llama_ctx, batch))
         {
@@ -478,11 +484,14 @@ std::string generate_text_response(const std::string &system_message, const std:
         }
         n_past++;
     }
+    std::cout << "Finished token processing" << std::endl;
 
+    std::cout << "Starting text generation" << std::endl;
     llama_token id = 0;
     char token_buf[8]; // Buffer to store the token piece, adjust size if needed
     for (int i = 0; i < 500; ++i)
     { // Generate up to 500 tokens
+        std::cout << "Generating token " << i << std::endl;
         if (llama_get_kv_cache_token_count(llama_ctx) >= llama_n_ctx(llama_ctx))
         {
             std::cout << "Context limit reached. Stopping generation." << std::endl;
