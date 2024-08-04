@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
     }
 
     llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = 2048;      // adjust as needed
+    ctx_params.n_ctx = 2048; // adjust as needed
     llama_ctx = llama_new_context_with_model(llama_model, ctx_params);
 
     if (llama_ctx == NULL)
@@ -457,7 +457,7 @@ std::string generate_text_response(const std::string &system_message, const std:
                                   prompt.length(),
                                   tokens.data(),
                                   tokens.size(),
-                                  true,  // add_bos
+                                  true,   // add_bos
                                   false); // add_eos
     if (n_tokens < 0)
     {
@@ -498,7 +498,24 @@ std::string generate_text_response(const std::string &system_message, const std:
             break;
         }
 
-        llama_token_data_array candidates = {NULL, 0, false};
+        // Get the logits for the next token
+        float *logits = llama_get_logits(llama_ctx);
+        int n_vocab = llama_n_vocab(llama_model);
+
+        // Allocate and populate the candidates array
+        std::vector<llama_token_data> candidates_data(n_vocab);
+        for (int token_id = 0; token_id < n_vocab; token_id++)
+        {
+            candidates_data[token_id] = {
+                token_id,
+                logits[token_id],
+                0.0f // We're not setting probabilities here
+            };
+        }
+
+        llama_token_data_array candidates = {candidates_data.data(), candidates_data.size(), false};
+
+        // Sample the next token
         id = llama_sample_token(llama_ctx, &candidates);
 
         if (llama_token_eos(llama_model) == id)
