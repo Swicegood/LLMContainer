@@ -4,6 +4,17 @@ message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
 option(LLAVA_DEBUG "Enable debug symbols" OFF)
 project(llava-server CUDA CXX)
+set(LLAMA_COMMIT "unknown" CACHE STRING "Git commit hash")
+set(LLAMA_BUILD_NUMBER 0 CACHE STRING "Build number")
+set(LLAMA_BUILD_TARGET "unknown" CACHE STRING "Build target")
+set(LLAMA_COMPILER "unknown" CACHE STRING "Compiler used")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/config.h"
+)
+
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 if(LLAVA_DEBUG)
     set(CMAKE_BUILD_TYPE Debug)
@@ -275,6 +286,13 @@ add_library(llama STATIC
     ../../src/llama-impl.h
     ../../common/common.cpp
     ../../common/common.h
+    ../../common/sampling.cpp
+    ../../common/sampling.h
+    ../../common/grammar-parser.cpp
+    ../../common/grammar-parser.h
+    ../../common/json-schema-to-grammar.cpp
+    ../../common/json-schema-to-grammar.h
+    ./llama_build_info.cpp
 )
 
 target_include_directories(llama PUBLIC

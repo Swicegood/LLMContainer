@@ -1,0 +1,9 @@
+#ifndef LLAMA_CONFIG_H
+#define LLAMA_CONFIG_H
+
+extern const char * LLAMA_COMMIT;
+extern int LLAMA_BUILD_NUMBER;
+extern const char * LLAMA_BUILD_TARGET;
+extern const char * LLAMA_COMPILER;
+
+#endif // LLAMA_CONFIG_H

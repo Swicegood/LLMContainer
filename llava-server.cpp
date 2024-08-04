@@ -26,6 +26,8 @@
 #include "clip.h"
 #include "llama.h"
 #include "llava.h"
+#include "common.h"
+#include "sampling.h"
 
 using json = nlohmann::json;
 
@@ -81,7 +83,7 @@ int main(int argc, char *argv[])
     llama_backend_init();
 
     llama_model_params model_params = llama_model_default_params();
-    model_params.n_gpu_layers = 32; // for 7B model, adjust based on your model size
+    model_params.n_gpu_layers = -1; // for 7B model, adjust based on your model size
     // model_params.n_gpu_layers = -1;  // Alternative: use -1 to offload all layers to GPU
 
     llama_model = llama_load_model_from_file(model_path.c_str(), model_params);
@@ -93,6 +95,7 @@ int main(int argc, char *argv[])
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = 2048; // adjust as needed
+    ctx_params.seed = -1;     // set to a non-zero value for reproducibility
     llama_ctx = llama_new_context_with_model(llama_model, ctx_params);
 
     if (llama_ctx == NULL)
@@ -457,7 +460,7 @@ std::string generate_text_response(const std::string &system_message, const std:
                                   prompt.length(),
                                   tokens.data(),
                                   tokens.size(),
-                                  true,   // add_bos
+                                  true,  // add_bos
                                   false); // add_eos
     if (n_tokens < 0)
     {
@@ -472,71 +475,89 @@ std::string generate_text_response(const std::string &system_message, const std:
     int n_past = 0;
 
     std::cout << "Starting token processing" << std::endl;
-    // Process tokens
-    for (size_t i = 0; i < tokens.size(); ++i)
+    // Process prompt tokens
+    for (size_t i = 0; i < tokens.size(); i += 32)
     {
-        std::cout << "Processing token " << i << std::endl;
-        llama_batch batch = llama_batch_get_one(&tokens[i], 1, n_past, 0);
+        int batch_size = std::min(32, static_cast<int>(tokens.size() - i));
+        std::cout << "Processing token batch " << i << " to " << i + batch_size - 1 << std::endl;
+        llama_batch batch = llama_batch_get_one(&tokens[i], batch_size, n_past, 0);
         if (llama_decode(llama_ctx, batch))
         {
             std::cerr << "Error: Failed to decode tokens at position " << i << std::endl;
             return "Error: Failed to decode tokens";
         }
-        n_past++;
+        n_past += batch_size;
     }
     std::cout << "Finished token processing" << std::endl;
 
     std::cout << "Starting text generation" << std::endl;
-    llama_token id = 0;
-    char token_buf[8]; // Buffer to store the token piece, adjust size if needed
-    for (int i = 0; i < 500; ++i)
-    { // Generate up to 500 tokens
-        std::cout << "Generating token " << i << std::endl;
-        if (llama_get_kv_cache_token_count(llama_ctx) >= llama_n_ctx(llama_ctx))
-        {
+
+    const int generate_max_tokens = 500;
+    const int batch_size = 32;  // Adjust based on your hardware capabilities
+
+    std::vector<llama_token> output_tokens;
+    output_tokens.reserve(generate_max_tokens);
+
+    // Pre-allocate candidates array
+    const int n_vocab = llama_n_vocab(llama_model);
+    std::vector<llama_token_data> candidates_data(n_vocab);
+    llama_token_data_array candidates = { candidates_data.data(), candidates_data.size(), false };
+
+    for (int i = 0; i < generate_max_tokens; i += batch_size) {
+        std::cout << "Generating token batch " << i << " to " << i + batch_size - 1 << std::endl;
+        // Prepare the batch
+        llama_batch batch = llama_batch_init(batch_size, 0, 1);
+        int actual_batch_size = std::min(batch_size, generate_max_tokens - i);
+        
+        for (int j = 0; j < actual_batch_size; j++) {
+            if (j == 0 || output_tokens.empty()) {
+                // Sample a new token
+                const float* logits = llama_get_logits(llama_ctx);
+                for (int token_id = 0; token_id < n_vocab; token_id++) {
+                    candidates_data[token_id] = {
+                        token_id,
+                        logits[token_id],
+                        0.0f
+                    };
+                }
+                llama_token id = llama_sample_token(llama_ctx, &candidates);
+                
+                if (llama_token_eos(llama_model) == id) {
+                    std::cout << "EOS token encountered. Stopping generation." << std::endl;
+                    actual_batch_size = j;
+                    break;
+                }
+                output_tokens.push_back(id);
+            }
+            
+            llama_batch_add(batch, output_tokens.back(), n_past + j, {}, false);
+        }
+        
+        // Process the batch
+        if (llama_decode(llama_ctx, batch)) {
+            std::cerr << "Error: Failed to decode batch" << std::endl;
+            break;
+        }
+        
+        // Convert tokens to text
+        for (int j = 0; j < actual_batch_size; j++) {
+            char token_buf[8];
+            int token_length = llama_token_to_piece(llama_model, output_tokens[i+j], token_buf, sizeof(token_buf), 0, false);
+            if (token_length > 0) {
+                response.append(token_buf, token_length);
+            }
+            std::cout << "Generated token " << i+j << ": " << std::string(token_buf, token_length) << std::endl;
+        }
+        
+        n_past += actual_batch_size;
+        
+        // Check for context limit
+        if (llama_get_kv_cache_token_count(llama_ctx) >= llama_n_ctx(llama_ctx)) {
             std::cout << "Context limit reached. Stopping generation." << std::endl;
             break;
         }
 
-        // Get the logits for the next token
-        float *logits = llama_get_logits(llama_ctx);
-        int n_vocab = llama_n_vocab(llama_model);
-
-        // Allocate and populate the candidates array
-        std::vector<llama_token_data> candidates_data(n_vocab);
-        for (int token_id = 0; token_id < n_vocab; token_id++)
-        {
-            candidates_data[token_id] = {
-                token_id,
-                logits[token_id],
-                0.0f // We're not setting probabilities here
-            };
-        }
-
-        llama_token_data_array candidates = {candidates_data.data(), candidates_data.size(), false};
-
-        // Sample the next token
-        id = llama_sample_token(llama_ctx, &candidates);
-
-        if (llama_token_eos(llama_model) == id)
-        {
-            std::cout << "EOS token encountered. Stopping generation." << std::endl;
-            break;
-        }
-
-        int token_length = llama_token_to_piece(llama_model, id, token_buf, sizeof(token_buf), 0, false);
-        if (token_length > 0)
-        {
-            response.append(token_buf, token_length);
-        }
-
-        llama_batch batch = llama_batch_get_one(&id, 1, n_past, 0);
-        if (llama_decode(llama_ctx, batch))
-        {
-            std::cerr << "Error: Failed to decode generated token at position " << i << std::endl;
-            break;
-        }
-        n_past++;
+        llama_batch_free(batch);
     }
 
     std::cout << "Generated response: " << response << std::endl;
