@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     git \
     wget \
+    curl \
+    gdb \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*

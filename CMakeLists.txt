@@ -2,7 +2,20 @@ cmake_minimum_required(VERSION 3.18)  # Increased to 3.18 for better CUDA suppor
 message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")
 message(STATUS "CUDA compiler: ${CMAKE_CUDA_COMPILER}")
+option(LLAVA_DEBUG "Enable debug symbols" OFF)
 project(llava-server CUDA CXX)
+
+if(LLAVA_DEBUG)
+    set(CMAKE_BUILD_TYPE Debug)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    if(LLAVA_CUDA)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -g -G")
+    endif()
+    message(STATUS "Debug symbols enabled")
+else()
+    set(CMAKE_BUILD_TYPE Release)
+endif()
 
 # Set CMake policy CMP0104 to NEW
 cmake_policy(SET CMP0104 NEW)
@@ -192,6 +205,7 @@ foreach(source ${GGML_SOURCES_FILTERED})
         add_custom_command(
             OUTPUT ${output_file}
             COMMAND ${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS}
+                    $<$<BOOL:${LLAVA_DEBUG}>:-g>
                     -DGGML_BUILD
                     -D_GNU_SOURCE
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../ggml/include
