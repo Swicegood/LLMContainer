@@ -25,15 +25,9 @@ RUN apt-get update && apt-get install -y \
 # Set the working directory
 WORKDIR /app
 
-# Clone the llama.cpp repository (adjust the URL if you're using a fork)
-RUN git clone https://github.com/ggerganov/llama.cpp.git
 
-COPY test.jpg /app/llama.cpp/examples/llava/test.jpg
+COPY test.jpg build/bin/llama-llava-cli ./
 
-
-# Build the project
-RUN cd llama.cpp/examples/llava && \
-    cmake . 
 
 RUN ls
 
@@ -41,7 +35,7 @@ RUN ls
 EXPOSE 8080
 
 # Set the command to run the server
-CMD ["/app/llama.cpp/examples/llava/llama-llava-cli", \
+CMD ["/app/llama-llava-cli", \
      "--m", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
      "--mmproj", "/models/mmproj-model-f16.gguf", \
      "--image", "/app/llama.cpp/examples/llava/test.jpg", \]
