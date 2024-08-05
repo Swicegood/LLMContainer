@@ -33,6 +33,6 @@ EXPOSE 8080
 
 # Set the command to run the server
 CMD ["/app/llama-llava-cli", \
-     "--m", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
+     "-m", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
      "--mmproj", "/models/mmproj-model-f16.gguf", \
      "--image", "test.jpg"]
