@@ -11,10 +11,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install necessary dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libopencv-dev \
-    libcurl4-openssl-dev \
     git \
     wget \
     curl \
@@ -28,6 +24,7 @@ WORKDIR /app
 
 COPY test.jpg llama-llava-cli ./
 
+RUN chmod +x llama-llava-cli
 
 RUN ls
 
