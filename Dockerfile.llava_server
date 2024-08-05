@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     git \
     wget \
     curl \
+    gdb \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
@@ -28,12 +29,25 @@ WORKDIR /app
 # Clone the llama.cpp repository (adjust the URL if you're using a fork)
 RUN git clone https://github.com/ggerganov/llama.cpp.git
 
-COPY test.jpg /app/llama.cpp/examples/llava/test.jpg
+# Copy your project files
+# Copy the source files
+COPY CMakeLists.txt llava-server.cpp llama_build_info.cpp config.h.in /app/llama.cpp/examples/llava/
+
+COPY common.cpp /app/llama.cpp/common/
+
+
+RUN mkdir -p /app/llama.cpp/examples/llava/include/nlohmann
+
+COPY json.hpp /app/llama.cpp/examples/llava/include/nlohmann/
 
 
 # Build the project
 RUN cd llama.cpp/examples/llava && \
-    cmake . 
+    cmake -DCMAKE_C_COMPILER=/usr/bin/gcc \
+          -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+          -DLLAVA_DEBUG=ON \
+          -DLLAVA_CUDA=ON . && \
+    make VERBOSE=1 -j$(nproc)
 
 RUN ls
 
@@ -41,7 +55,7 @@ RUN ls
 EXPOSE 8080
 
 # Set the command to run the server
-CMD ["/app/llama.cpp/examples/llava/llama-llava-cli", \
-     "--m", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
+CMD ["/app/llama.cpp/examples/llava/llava-server", \
+     "--model", "/models/llava-v1.6-mistral-7b.Q8_0.gguf", \
      "--mmproj", "/models/mmproj-model-f16.gguf", \
-     "--image", "/app/llama.cpp/examples/llava/test.jpg", \]
+     "--port", "8080"]
