@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 
-COPY test.jpg ./build/bin/llama-llava-cli ./
+COPY test.jpg llama-llava-cli ./
 
 
 RUN ls
