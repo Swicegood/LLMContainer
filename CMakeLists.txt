@@ -338,6 +338,26 @@ if (LLAVA_CUDA)
     target_link_libraries(llava PUBLIC CUDA::cudart CUDA::cublas)
 endif()
 
+
+set(TARGET llama-llava-cli)
+add_executable(${TARGET} llava-cli.cpp)
+set_target_properties(${TARGET} PROPERTIES OUTPUT_NAME llama-llava-cli)
+install(TARGETS ${TARGET} RUNTIME)
+target_link_libraries(
+    ${TARGET}
+    PRIVATE
+    llava
+    llama
+    ggml_library
+    ${OpenCV_LIBS}
+    ${CURL_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT}
+    pthread
+    m
+    rt
+)
+target_compile_features(${TARGET} PRIVATE cxx_std_11)
+
 # Add the server executable
 add_executable(llava-server
     llava-server.cpp
