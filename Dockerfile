@@ -33,9 +33,6 @@ RUN git clone https://github.com/ggerganov/llama.cpp.git
 # Copy the source files
 COPY CMakeLists.txt llava-server.cpp llama_build_info.cpp config.h.in /app/llama.cpp/examples/llava/
 
-COPY common.cpp /app/llama.cpp/common/
-
-
 RUN mkdir -p /app/llama.cpp/examples/llava/include/nlohmann
 
 COPY json.hpp /app/llama.cpp/examples/llava/include/nlohmann/
